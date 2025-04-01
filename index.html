@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Limpiador de Metadatos (Todo en Uno)</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <!-- pdf-lib (necesario para PDFs) -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <!-- exif-js (para metadatos de imagen) -->
+    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+    <!-- Font Awesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <style>
+        /* Estilos CSS incrustados */
+         body {
+            background-color: #f8f9fa;
+        }
+        .drop-zone {
+            border: 3px dashed #0d6efd;
+            border-radius: 0.375rem;
+            padding: 50px;
+            text-align: center;
+            cursor: pointer;
+            background-color: #e9ecef;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+        .drop-zone.drag-over {
+            background-color: #d1e7ff;
+            border-color: #0a58ca;
+        }
+        .drop-zone i {
+            font-size: 3rem;
+            color: #0d6efd;
+            margin-bottom: 15px;
+        }
+        .file-list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1.25rem;
+            margin-bottom: -1px;
+            background-color: #fff;
+            border: 1px solid rgba(0,0,0,.125);
+            gap: 10px; /* Espacio entre elementos */
+        }
+         .file-list-item .file-info {
+            flex-grow: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .file-list-item:first-child {
+            border-top-left-radius: 0.375rem;
+            border-top-right-radius: 0.375rem;
+        }
+        .file-list-item:last-child {
+            margin-bottom: 0;
+            border-bottom-right-radius: 0.375rem;
+            border-bottom-left-radius: 0.375rem;
+        }
+        .file-status {
+            font-style: italic;
+            font-size: 0.9em;
+             flex-shrink: 0;
+        }
+        .status-processing { color: #ffc107; }
+        .status-done { color: #198754; }
+        .status-error { color: #dc3545; }
+        .status-unsupported { color: #6c757d; }
+        .status-reading-meta { color: #0dcaf0; } /* Info color */
+
+        .metadata-info-btn {
+             flex-shrink: 0;
+        }
+        .modal-body pre {
+            max-height: 400px;
+            overflow-y: auto;
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            white-space: pre-wrap; /* Para que el texto largo haga wrap */
+            word-break: break-all;  /* Para forzar el corte de palabras largas */
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4">Limpiador de Metadatos</h1>
+        <p class="text-center text-muted mb-4">Arrastra o selecciona archivos PDF e Imágenes (JPG, PNG).<br>Puedes ver los metadatos originales antes de procesar.<br><strong>Nota:</strong> Los archivos DOC/DOCX no son soportados.</p>
+
+        <div class="row justify-content-center">
+            <div class="col-md-10 col-lg-8">
+                <!-- Zona de Arrastrar y Soltar -->
+                <div id="dropZone" class="drop-zone mb-4">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p class="mb-0">Arrastra y suelta archivos aquí</p>
+                    <p class="text-muted small">o haz clic para seleccionar</p>
+                    <input type="file" id="fileInput" multiple hidden accept=".pdf,image/jpeg,image/png,image/gif">
+                </div>
+
+                <!-- Lista de Archivos -->
+                <h4 class="mb-3">Archivos Cargados:</h4>
+                <div id="fileList" class="mb-3">
+                    <!-- Los archivos se listarán aquí dinámicamente -->
+                </div>
+
+                <!-- Botones de Acción -->
+                <div class="d-grid gap-2 d-sm-flex justify-content-sm-end">
+                     <button id="clearButton" type="button" class="btn btn-secondary" disabled>
+                        <i class="fas fa-trash me-1"></i> Limpiar Lista
+                    </button>
+                    <button id="processButton" type="button" class="btn btn-primary" disabled>
+                        <i class="fas fa-cogs me-1"></i> Procesar Archivos
+                    </button>
+                </div>
+                 <div id="globalError" class="alert alert-danger mt-3 d-none" role="alert">
+                    Ocurrió un error general. Revisa la consola para más detalles.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para mostrar Metadatos -->
+    <div class="modal fade" id="metadataModal" tabindex="-1" aria-labelledby="metadataModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="metadataModalLabel">Metadatos Originales</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Archivo:</strong> <span id="metadataFileName"></span></p>
+                    <pre><code id="metadataContent">Cargando metadatos...</code></pre>
+                     <small class="text-muted">Nota: Estos son los metadatos encontrados en el archivo original. El proceso de limpieza intentará eliminarlos.</small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+
+    <!-- === INICIO DEL CÓDIGO JAVASCRIPT INCRUSTADO === -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Referencias al DOM ---
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('fileInput');
+            const fileList = document.getElementById('fileList');
+            const processButton = document.getElementById('processButton');
+            const clearButton = document.getElementById('clearButton');
+            const globalError = document.getElementById('globalError');
+            const metadataModalElement = document.getElementById('metadataModal');
+            const metadataModalLabel = document.getElementById('metadataModalLabel');
+            const metadataFileName = document.getElementById('metadataFileName');
+            const metadataContent = document.getElementById('metadataContent');
+
+            // --- Instancia del Modal de Bootstrap ---
+            // Asegurarse de que bootstrap esté cargado antes de instanciar
+            let metadataModal = null;
+            if (typeof bootstrap !== 'undefined') {
+                 metadataModal = new bootstrap.Modal(metadataModalElement);
+            } else {
+                console.error("Bootstrap no está cargado. El modal de metadatos no funcionará.");
+                // Podrías intentar inicializarlo más tarde o mostrar un error
+            }
+
+
+            // --- Estado de la Aplicación ---
+            let filesToProcess = []; // Array para almacenar objetos { file: File, element: HTMLElement, status: string, processedBlob?: Blob, originalMetadata?: object | string | null }
+
+            // --- Acceso a librerías globales ---
+            // pdf-lib y EXIF se asume que están disponibles globalmente desde los <script> en <head>
+            const { PDFDocument } = PDFLib;
+            // EXIF es global
+
+            // --- Funciones de Utilidad ---
+            function showGlobalError(message) { console.error("Error global:", message); globalError.textContent = `Error: ${message}. Revisa la consola.`; globalError.classList.remove('d-none'); }
+            function hideGlobalError() { globalError.classList.add('d-none'); }
+            function getFileIconClass(fileType) { if (fileType.startsWith('image/jpeg') || fileType.startsWith('image/jpg')) return 'fa-file-image'; if (fileType.startsWith('image/')) return 'fa-file-image'; if (fileType === 'application/pdf') return 'fa-file-pdf'; return 'fa-file'; }
+            function getCleanFileName(originalName) { const nameParts = originalName.split('.'); const extension = nameParts.pop() || 'dat'; const name = nameParts.join('.') || 'archivo'; return `${name}_sin_meta.${extension}`; }
+
+
+            /** Actualiza el estado visual de los botones */
+            function updateButtonStates() {
+                const hasFiles = filesToProcess.length > 0;
+                const isProcessing = filesToProcess.some(f => f.status === 'processing' || f.status === 'reading-meta');
+                const hasPending = filesToProcess.some(f => f.status === 'waiting');
+
+                processButton.disabled = !hasFiles || isProcessing || !hasPending;
+                clearButton.disabled = !hasFiles || isProcessing;
+            }
+
+
+            /** Formatea el objeto de metadatos para mostrarlo */
+            function formatMetadata(metadata) {
+                if (metadata === null || metadata === undefined) {
+                    return "No se encontraron metadatos o no se pudieron leer.";
+                }
+                if (typeof metadata === 'string') {
+                    return metadata;
+                }
+                if (typeof metadata === 'object' && Object.keys(metadata).length === 0) {
+                    return "No se encontraron metadatos específicos (el archivo puede estar limpio o no contener metadatos estándar).";
+                }
+                if (typeof metadata === 'object') {
+                    let output = '';
+                    for (const key in metadata) {
+                        if (Object.hasOwnProperty.call(metadata, key)) {
+                            let value = metadata[key];
+                            if (typeof value === 'string' && value.length > 150) {
+                                value = value.substring(0, 150) + "... (truncado)";
+                            }
+                             if (value instanceof Date) {
+                                value = value.toLocaleString();
+                            } else if (typeof value === 'object' && value !== null) {
+                                // Evitar mostrar objetos complejos directamente
+                                value = JSON.stringify(value);
+                                if (value.length > 150) {
+                                     value = value.substring(0, 150) + "... (truncado)";
+                                }
+                            }
+                            output += `${key}: ${value}\n`;
+                        }
+                    }
+                    return output.trim();
+                }
+                return "Formato de metadatos desconocido.";
+            }
+
+            // --- Extracción de Metadatos ---
+
+            /** Extrae metadatos EXIF de una imagen */
+            function extractExifMetadata(fileData) {
+                 return new Promise((resolve) => {
+                    if (typeof EXIF === 'undefined') {
+                        console.error("EXIF.js no está cargado.");
+                        fileData.originalMetadata = { "Error": "Librería EXIF.js no disponible."};
+                        resolve();
+                        return;
+                    }
+                    try {
+                        EXIF.getData(fileData.file, function() {
+                            const tags = EXIF.getAllTags(this);
+                            if (tags && Object.keys(tags).length > 0) {
+                                const cleanedTags = {};
+                                for (const key in tags) {
+                                    if (typeof tags[key] !== 'object' && key !== 'undefined') {
+                                        if (tags[key] instanceof Uint8Array || Array.isArray(tags[key])) {
+                                            try {
+                                                const decoder = new TextDecoder('utf-8', { fatal: false });
+                                                cleanedTags[key] = decoder.decode(Uint8Array.from(tags[key])).replace(/\0/g, '').trim();
+                                            } catch (e) { cleanedTags[key] = '[Datos binarios]'; }
+                                        } else { cleanedTags[key] = tags[key]; }
+                                    } else if (key === 'thumbnail' && tags[key]?.blob) {
+                                        cleanedTags[key] = `[Miniatura (${(tags[key].blob.size / 1024).toFixed(1)} KB)]`;
+                                    }
+                                }
+                                fileData.originalMetadata = cleanedTags;
+                            } else {
+                                fileData.originalMetadata = {};
+                            }
+                            resolve();
+                        });
+
+                        setTimeout(() => {
+                            if (fileData.originalMetadata === undefined) {
+                                console.warn(`Timeout/error EXIF ${fileData.file.name}`);
+                                fileData.originalMetadata = { "Error": "No se pudo leer EXIF (Timeout)." };
+                                resolve();
+                            }
+                        }, 3000);
+                    } catch (exifError) {
+                         console.error("Error directo al llamar a EXIF.getData:", exifError);
+                         fileData.originalMetadata = { "Error": "Fallo al intentar leer EXIF."};
+                         resolve();
+                    }
+                });
+            }
+
+            /** Extrae metadatos de un PDF */
+            async function extractPdfMetadata(fileData) {
+                try {
+                    const arrayBuffer = await fileData.file.arrayBuffer();
+                    const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+                    const metadata = {
+                        Title: pdfDoc.getTitle(), Author: pdfDoc.getAuthor(), Subject: pdfDoc.getSubject(),
+                        Keywords: pdfDoc.getKeywords()?.split(',').map(k => k.trim()).filter(k => k) || [],
+                        Producer: pdfDoc.getProducer(), Creator: pdfDoc.getCreator(),
+                        CreationDate: pdfDoc.getCreationDate(), ModificationDate: pdfDoc.getModificationDate(),
+                    };
+
+                    const cleanMetadata = {};
+                    for(const key in metadata) {
+                        if (metadata[key] !== undefined && metadata[key] !== null && metadata[key] !== '') {
+                            if (key === 'Keywords' && Array.isArray(metadata[key]) && metadata[key].length === 0) continue;
+                            cleanMetadata[key] = metadata[key];
+                        }
+                    }
+                    fileData.originalMetadata = cleanMetadata;
+
+                } catch (error) {
+                    console.error(`Error extrayendo meta PDF ${fileData.file.name}:`, error);
+                    fileData.originalMetadata = { "Error": `No se pudo leer meta PDF: ${error.message}` };
+                }
+            }
+
+            /** Orquesta la extracción de metadatos según el tipo */
+            async function extractMetadata(fileData) {
+                const infoButton = fileData.element.querySelector('.metadata-info-btn');
+                if (infoButton) infoButton.disabled = true;
+                updateFileStatus(fileData, 'reading-meta', 'Leyendo metadatos...');
+
+                try {
+                    if (fileData.file.type === 'image/jpeg' || fileData.file.type === 'image/jpg') {
+                        await extractExifMetadata(fileData);
+                    } else if (fileData.file.type === 'application/pdf') {
+                        await extractPdfMetadata(fileData);
+                    } else if (fileData.file.type.startsWith('image/')) {
+                        fileData.originalMetadata = "Extracción EXIF solo para JPEG.";
+                    } else {
+                        fileData.originalMetadata = "Extracción no soportada.";
+                    }
+
+                    if (fileData.status !== 'unsupported') {
+                        updateFileStatus(fileData, 'waiting', 'Listo para procesar');
+                    }
+
+                } catch (error) {
+                    console.error(`Error extrayendo meta ${fileData.file.name}:`, error);
+                    fileData.originalMetadata = { "Error": "Fallo extracción." };
+                     updateFileStatus(fileData, 'waiting', 'Listo (Error meta)');
+                } finally {
+                    if (infoButton) infoButton.disabled = false;
+                    updateButtonStates();
+                }
+            }
+
+             /** Muestra el modal con los metadatos */
+            function showMetadata(fileId) {
+                 if (!metadataModal) {
+                     console.error("El modal no está inicializado.");
+                     alert("Error: El componente modal no se pudo cargar.");
+                     return;
+                 }
+                const fileData = filesToProcess.find(f => f.id === fileId);
+                if (!fileData) return;
+
+                metadataFileName.textContent = fileData.file.name;
+
+                if (fileData.originalMetadata === undefined) {
+                    metadataContent.textContent = "Metadatos aún no leídos o error inicial.";
+                } else {
+                    metadataContent.textContent = formatMetadata(fileData.originalMetadata);
+                }
+                metadataModal.show();
+            }
+
+
+            /** Añade un archivo a la lista, al estado e inicia la extracción de metadatos */
+            function addFileToList(file) {
+                if (filesToProcess.some(f => f.file.name === file.name)) {
+                    console.warn(`Archivo "${file.name}" duplicado.`);
+                    return;
+                }
+
+                hideGlobalError();
+                const fileId = `file-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+                const listItem = document.createElement('div');
+                listItem.classList.add('file-list-item');
+                listItem.id = fileId;
+
+                const fileType = file.type;
+                const iconClass = getFileIconClass(fileType);
+                const isSupportedForCleaning = fileType.startsWith('image/') || fileType === 'application/pdf';
+                const initialStatus = isSupportedForCleaning ? 'waiting' : 'unsupported';
+                const statusClass = isSupportedForCleaning ? '' : 'status-unsupported';
+                const initialMessage = isSupportedForCleaning ? 'Pendiente...' : 'Tipo no soportado';
+
+                listItem.innerHTML = `
+                    <span class="file-info" title="${file.name}">
+                        <i class="fas ${iconClass} me-2"></i>
+                        ${file.name.length > 35 ? file.name.substring(0, 32) + '...' : file.name}
+                        <small class="text-muted d-none d-sm-inline">(${(file.size / 1024).toFixed(1)} KB)</small>
+                    </span>
+                    <button class="btn btn-sm btn-outline-info metadata-info-btn" data-fileid="${fileId}" title="Ver Metadatos Originales" disabled>
+                        <i class="fas fa-info-circle"></i>
+                    </button>
+                    <span class="file-status ${statusClass}">${initialMessage}</span>
+                    <a href="#" class="btn btn-sm btn-success disabled" download="${getCleanFileName(file.name)}" style="visibility: hidden;">
+                        <i class="fas fa-download"></i>
+                    </a>
+                `;
+
+                fileList.appendChild(listItem);
+
+                const newFileData = {
+                    id: fileId, file: file, element: listItem,
+                    status: initialStatus, processedBlob: null, originalMetadata: undefined
+                };
+                filesToProcess.push(newFileData);
+
+                if (isSupportedForCleaning) {
+                    // Usar setTimeout para asegurar que el DOM se actualice antes de iniciar tarea pesada
+                    setTimeout(() => extractMetadata(newFileData), 0);
+                } else {
+                    newFileData.originalMetadata = "Extracción no aplicable (tipo no soportado).";
+                    const infoButton = listItem.querySelector('.metadata-info-btn');
+                    if(infoButton) infoButton.disabled = false;
+                }
+                updateButtonStates();
+            }
+
+            /** Actualiza el estado visual de un archivo en la lista */
+            function updateFileStatus(fileData, status, message, processedBlob = null) {
+                // Evitar sobrescribir estados finales a menos que sea un error nuevo
+                 if ((fileData.status === 'unsupported' || fileData.status === 'error') && status !== 'error') {
+                     // Actualizar solo el mensaje si es relevante
+                    if(status === 'waiting' && (fileData.status === 'reading-meta')) {
+                        // Permite actualizar el mensaje después de leer meta si hubo error previo
+                    } else {
+                         // No cambiar el estado visual si ya es final (unsupported/error)
+                         return;
+                    }
+                 }
+
+                const prevStatus = fileData.status; // Guardar estado previo
+                fileData.status = status;
+                const statusElement = fileData.element.querySelector('.file-status');
+                const downloadLink = fileData.element.querySelector('a');
+                const infoButton = fileData.element.querySelector('.metadata-info-btn');
+
+                statusElement.textContent = message;
+                statusElement.className = `file-status status-${status}`;
+
+                if (status === 'done' && processedBlob) {
+                    fileData.processedBlob = processedBlob;
+                     if (downloadLink.href && downloadLink.href.startsWith('blob:')) { URL.revokeObjectURL(downloadLink.href); }
+                    const objectURL = URL.createObjectURL(processedBlob);
+                    downloadLink.href = objectURL;
+                    downloadLink.download = getCleanFileName(fileData.file.name);
+                    downloadLink.classList.remove('disabled');
+                    downloadLink.style.visibility = 'visible';
+                    if (infoButton) infoButton.disabled = false;
+                } else if (status !== 'processing' && status !== 'reading-meta') {
+                    downloadLink.classList.add('disabled');
+                    downloadLink.style.visibility = 'hidden';
+                    if (downloadLink.href && downloadLink.href.startsWith('blob:')) { URL.revokeObjectURL(downloadLink.href); downloadLink.href="#"; }
+                    fileData.processedBlob = null;
+                    if (infoButton) infoButton.disabled = (fileData.originalMetadata === undefined && status !== 'unsupported' && status !== 'error');
+                } else { // Processing or reading-meta
+                    if (infoButton) infoButton.disabled = true;
+                    downloadLink.classList.add('disabled');
+                    downloadLink.style.visibility = 'hidden';
+                }
+                 // Solo actualizar botones globales si el estado realmente cambió o si terminó una operación
+                 if(prevStatus !== status || status === 'done' || status === 'error' || status === 'waiting') {
+                    updateButtonStates();
+                 }
+            }
+
+            /** Limpia todos los archivos de la lista y el estado */
+            function clearFileList() {
+                filesToProcess.forEach(fileData => {
+                    const downloadLink = fileData.element.querySelector('a');
+                    if (fileData.processedBlob && downloadLink && downloadLink.href.startsWith('blob:')) {
+                        URL.revokeObjectURL(downloadLink.href);
+                    }
+                });
+                filesToProcess = [];
+                fileList.innerHTML = '';
+                hideGlobalError();
+                updateButtonStates();
+            }
+
+            // --- Lógica de Procesamiento ---
+            function processImage(fileData) {
+                 return new Promise((resolve, reject) => {
+                    updateFileStatus(fileData, 'processing', 'Procesando imagen...');
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.naturalWidth || img.width || 300; // Fallback size
+                            canvas.height = img.naturalHeight || img.height || 150;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                            canvas.toBlob((blob) => {
+                                if (blob) { updateFileStatus(fileData, 'done', 'Metadatos eliminados', blob); resolve(); }
+                                else { reject(new Error('Fallo al crear Blob del canvas.')); }
+                            }, fileData.file.type, 0.92); // Calidad JPG
+                        };
+                        img.onerror = (err) => { reject(new Error(`No se pudo cargar la imagen: ${err?.type || 'error'}`)); };
+                        img.src = e.target.result;
+                    };
+                    reader.onerror = (err) => { reject(new Error(`Error leyendo archivo: ${err}`)); };
+                    reader.readAsDataURL(fileData.file);
+                });
+            }
+
+            async function processPdf(fileData) {
+                updateFileStatus(fileData, 'processing', 'Procesando PDF...');
+                try {
+                    const arrayBuffer = await fileData.file.arrayBuffer();
+                    const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+                    pdfDoc.setTitle(''); pdfDoc.setAuthor(''); pdfDoc.setSubject('');
+                    pdfDoc.setKeywords([]); pdfDoc.setProducer(''); pdfDoc.setCreator('');
+                    try { pdfDoc.setCreationDate(new Date(0)); pdfDoc.setModificationDate(new Date(0)); }
+                    catch (dateError){ console.warn("No se resetearon fechas PDF:", dateError); }
+                    const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
+                    const processedBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+                    updateFileStatus(fileData, 'done', 'Metadatos eliminados', processedBlob);
+                } catch (error) { console.error(`Error procesando PDF ${fileData.file.name}:`, error); throw new Error(`Error PDF: ${error.message || error}`); }
+            }
+
+            // --- Manejadores de Eventos ---
+
+            dropZone.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', (e) => { for (const file of e.target.files) { addFileToList(file); } fileInput.value = null; });
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+            dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); });
+            dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); const droppedFiles = e.dataTransfer.files; for (const file of droppedFiles) { addFileToList(file); } });
+
+            fileList.addEventListener('click', (e) => {
+                const infoButton = e.target.closest('.metadata-info-btn');
+                if (infoButton && !infoButton.disabled) {
+                    const fileId = infoButton.getAttribute('data-fileid');
+                    showMetadata(fileId);
+                }
+            });
+
+
+            processButton.addEventListener('click', async () => {
+                hideGlobalError();
+                const filesToProcessNow = filesToProcess.filter(f => f.status === 'waiting');
+                if (filesToProcessNow.length === 0) return;
+
+                updateButtonStates(); // Deshabilitar
+
+                let hasErrors = false;
+                // Procesar en secuencia para no sobrecargar
+                for (const fileData of filesToProcessNow) {
+                     if (fileData.status !== 'waiting') continue; // Doble chequeo
+                    try {
+                        if (fileData.file.type.startsWith('image/')) { await processImage(fileData); }
+                        else if (fileData.file.type === 'application/pdf') { await processPdf(fileData); }
+                        else { updateFileStatus(fileData, 'unsupported', 'Tipo no soportado'); }
+                    } catch (error) {
+                        console.error(`Fallo procesando ${fileData.file.name}:`, error);
+                        updateFileStatus(fileData, 'error', `Error: ${error.message.substring(0, 50)}...`);
+                        hasErrors = true;
+                    }
+                }
+
+                console.log("Proceso completado.");
+                if(hasErrors) { showGlobalError("Algunos archivos fallaron."); }
+                updateButtonStates(); // Habilitar si corresponde
+            });
+
+            clearButton.addEventListener('click', clearFileList);
+
+            updateButtonStates(); // Estado inicial
+        });
+    </script>
+    <!-- === FIN DEL CÓDIGO JAVASCRIPT INCRUSTADO === -->
+
+</body>
+</html>
