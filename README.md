@@ -15,6 +15,12 @@ Una aplicación web simple y **del lado del cliente** para eliminar metadatos po
 
 ![Screenshot](screenshot.png)
 
+---
+
+**[➡️ Ver Demo en Vivo](https://soyunomas.github.io/metadata-cleaner/index.html)**
+
+---
+
 ## 📝 Descripción
 
 Los metadatos incrustados en archivos como fotos (datos EXIF que incluyen configuración de la cámara, ubicación GPS 📍) o PDFs (autor, título, software de creación 💻) pueden revelar más información de la deseada. Esta herramienta proporciona una forma sencilla de **ver y eliminar** estos metadatos antes de compartir los archivos.
