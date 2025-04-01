@@ -41,10 +41,10 @@ Todo el proceso ocurre localmente en tu navegador web usando JavaScript. ✨
 
 ## 🛠️ Tecnologías Utilizadas
 
-*   <0xF0><0x9F><0xA7><0xB1> HTML5
+*   HTML5
 *   🎨 CSS3 (con Bootstrap 5 para estilos y layout)
 *   ⚡ JavaScript (Vanilla JS)
-*   <0xF0><0x9F><0x93><0x9A> [Bootstrap 5](https://getbootstrap.com/)
+*   [Bootstrap 5](https://getbootstrap.com/)
 *   📄 [pdf-lib](https://pdf-lib.js.org/) - Para manipulación de PDF.
 *   📷 [exif-js](https://github.com/exif-js/exif-js) - Para leer datos EXIF de JPEGs.
 *   👍 [Font Awesome](https://fontawesome.com/) (Opcional, para iconos)
@@ -63,10 +63,6 @@ Todo el proceso ocurre localmente en tu navegador web usando JavaScript. ✨
 3.  **Abre el archivo `index.html` (o la versión todo-en-uno si la usas) en tu navegador web.** 🌐
 
 ¡Eso es todo! No se necesita ningún proceso de construcción ni servidor. 🎉
-
-## 🙏 Contribuciones
-
-¡Las contribuciones son bienvenidas! Si encuentras un error o tienes una solicitud de función, por favor abre un [issue en GitHub](https://github.com/soyunomas/metadata-cleaner/issues). Si deseas contribuir con código, por favor haz un fork del repositorio y envía una pull request.
 
 ## 📜 Licencia
 
