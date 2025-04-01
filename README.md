@@ -13,7 +13,7 @@
 
 Una aplicación web simple y **del lado del cliente** para eliminar metadatos potencialmente sensibles de tus archivos PDF e imágenes (JPEG, PNG) directamente en tu navegador. 🚫 ¡No se sube ningún archivo a ningún servidor, garantizando tu privacidad! 🛡️
 
-![Screenshot](docs/screenshot.png)
+![Screenshot](screenshot.png)
 
 ## 📝 Descripción
 
